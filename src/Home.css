@@ -1,0 +1,99 @@
+.box{
+    max-width: 700px !important;
+    background-color: #000000b3 !important ;
+    box-shadow: -7px 14px 40px 5px #816c33, 10px -22px 50px 16px #816c33 !important;
+    position: relative;
+    bottom: 55px;
+}
+.connect:hover{
+   background-color:#c6701a  !important;
+   
+}
+.t1{
+    font-family: "Slackey", Sans-serif;
+}
+#liveButton{
+    margin-bottom: 18px;
+    margin-top: 12px;
+    display: flex;
+    justify-content: center;
+}
+#liveButton h5{
+    animation: glowing 1300ms infinite;
+    text-align: center;
+    display: inline;
+    padding-left: 10px;
+    padding-right: 10px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    border-radius: 3px;
+    color: white;
+    background-color: #4CAF50;
+}
+@keyframes glowing {
+    0% {
+      background-color: #2ba805;
+      box-shadow: 0 0 5px #2ba805;
+    }
+    50% {
+      background-color: #49e819;
+      box-shadow: 0 0 20px #49e819;
+    }
+    100% {
+      background-color: #2ba805;
+      box-shadow: 0 0 5px #2ba805;
+    }
+  }
+.endText{
+    position: relative;
+    left: 20px;
+    color: rgb(255, 220, 158);
+    margin-top: 6px !important;
+    margin-bottom: 6px !important;
+    margin-left: 4px !important;
+    margin-right: 4px !important;
+}
+.wallet{
+    display: block;
+    max-width: 200px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.para{
+    color: rgb(255, 172, 0) !important;
+    border: 1px solid #ffac00;
+    border-radius: 5px;
+    margin: 4px !important;
+    text-align: center;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+ }
+ .subTitle{
+     color: rgb(255, 220, 158) !important;
+     margin-top: 6px !important;
+     margin-bottom: 6px  !important;
+     margin-left: 4px !important;
+     margin-right: 4px  !important;
+     text-align: start;
+     font-size: medium !important;
+ }
+ .dis{
+     padding-left: 5px;
+ }
+
+ .liveBox{
+   justify-content: center !important;
+ }
+ @media only screen and (max-width: 600px) {
+    .walletAdd{
+        height: 60px;
+        margin-right: 5px  !important;
+    }
+    .bigBox{
+        padding-left: 2px !important;
+        padding-right: 2px !important;
+    }
+  }

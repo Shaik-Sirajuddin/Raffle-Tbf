@@ -11,13 +11,13 @@ import {
   onGatewayTokenChange,
   removeAccountChangeListener,
 } from '@identity.com/solana-gateway-ts';
-
+import './MintButton.css'
 export const CTAButton = styled(Button)`
   width: 100%;
   height: 60px;
   margin-top: 10px;
   margin-bottom: 5px;
-  background: linear-gradient(180deg, #604ae5 0%, #813eee 100%);
+  
   color: white;
   font-size: 16px;
   font-weight: bold;
@@ -30,6 +30,7 @@ export const MintButton = ({
   rpcUrl,
   setIsMinting,
   isActive,
+  isTbfPresale
 }: {
   onMint: () => Promise<void>;
   candyMachine?: CandyMachineAccount;
@@ -37,6 +38,7 @@ export const MintButton = ({
   setIsMinting: (val: boolean) => void;
   isActive: boolean;
   rpcUrl: string;
+  isTbfPresale: boolean
 }) => {
   const wallet = useWallet();
   const connection = useConnection();
@@ -54,10 +56,11 @@ export const MintButton = ({
       candyMachine?.state.isPresale ||
       candyMachine?.state.isWhitelistOnly
     ) {
-      return 'WHITELIST MINT';
+
+      return 'Buy Ticket';
     }
 
-    return 'MINT';
+    return 'Buy Ticket';
   };
 
   useEffect(() => {
@@ -100,6 +103,7 @@ export const MintButton = ({
 
   return (
     <CTAButton
+    className='btn-grad'
       disabled={isMinting || !isActive}
       onClick={async () => {
         if (candyMachine?.state.isActive && candyMachine?.state.gatekeeper) {
@@ -163,7 +167,9 @@ export const MintButton = ({
       }}
       variant="contained"
     >
-      {getMintButtonContent()}
+      {
+      getMintButtonContent()
+      }
     </CTAButton>
   );
 };

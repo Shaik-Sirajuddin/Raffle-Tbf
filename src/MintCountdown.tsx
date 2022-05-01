@@ -5,8 +5,8 @@ import { Theme, createStyles, makeStyles } from '@material-ui/core/styles';
 const useStyles = makeStyles((theme: Theme) =>
   createStyles({
     root: {
-      display: 'flex',
-      padding: theme.spacing(0),
+       display: 'flex',
+       padding: theme.spacing(0),
       '& > *': {
         margin: theme.spacing(0.4),
         width: theme.spacing(6),
@@ -24,19 +24,23 @@ const useStyles = makeStyles((theme: Theme) =>
     },
     done: {
       display: 'flex',
-      margin: 0,
       marginBottom: theme.spacing(0.5),
+      marginLeft : 25,
+      marginRight : 25,
       height: theme.spacing(3.5),
-      padding: theme.spacing(1),
+      padding: 22,
       flexDirection: 'column',
       alignContent: 'center',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#384457',
+      background: '#5f976a',
       color: 'white',
       borderRadius: 5,
       fontWeight: 'bold',
       fontSize: 18,
+  
+      position : 'relative',
+      top:'8px'
     },
     item: {
       fontWeight: 'bold',
@@ -79,7 +83,7 @@ export const MintCountdown: React.FC<MintCountdownProps> = ({
       return status ? <span className={classes.done}>{status}</span> : null;
     } else {
       return (
-        <div className={classes.root} style={style}>
+        <div className={classes.root } style={style}>
           <Paper elevation={0}>
             <span className={classes.item}>
               {hours < 10 ? `0${hours}` : hours}

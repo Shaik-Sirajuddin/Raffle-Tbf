@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import * as anchor from '@project-serum/anchor';
-
+import './Home.css'
 import styled from 'styled-components';
 import { Container, Snackbar } from '@material-ui/core';
 import Paper from '@material-ui/core/Paper';
@@ -9,26 +9,33 @@ import Grid from '@material-ui/core/Grid';
 import Typography from '@material-ui/core/Typography';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useAnchorWallet } from '@solana/wallet-adapter-react';
 import { WalletDialogButton } from '@solana/wallet-adapter-material-ui';
 import {
   awaitTransactionSignatureConfirmation,
   CandyMachineAccount,
   CANDY_MACHINE_PROGRAM,
+  createAccountsForMint,
   getCandyMachineState,
+  getCollectionPDA,
   mintOneToken,
+  SetupState,
 } from './candy-machine';
 import { AlertState, toDate, formatNumber, getAtaForMint } from './utils';
 import { MintCountdown } from './MintCountdown';
 import { MintButton } from './MintButton';
 import { GatewayProvider } from '@civic/solana-gateway-react';
-import { sendTransaction } from './connection';
+import { sendTransaction, sleep } from './connection';
+import walletLogo from './Images/Solana_logo.png'
+import { initializeApp } from 'firebase/app';
+import { collection, doc, getDoc, getDocs, getFirestore, increment, setDoc, updateDoc } from "firebase/firestore";
 
 const ConnectButton = styled(WalletDialogButton)`
   width: 100%;
   height: 60px;
   margin-top: 10px;
   margin-bottom: 5px;
-  background: linear-gradient(180deg, #604ae5 0%, #813eee 100%);
+  background: #ab5c2f;
   color: white;
   font-size: 16px;
   font-weight: bold;
@@ -54,17 +61,23 @@ const Home = (props: HomeProps) => {
   const [isActive, setIsActive] = useState(false);
   const [endDate, setEndDate] = useState<Date>();
   const [itemsRemaining, setItemsRemaining] = useState<number>();
+  const [totalItemsRemaining,setTotalItemsRemaining] = useState<number>();
   const [isWhitelistUser, setIsWhitelistUser] = useState(false);
   const [isPresale, setIsPresale] = useState(false);
   const [discountPrice, setDiscountPrice] = useState<anchor.BN>();
-
+  const [needTxnSplit, setNeedTxnSplit] = useState(true);
+  const [setupTxn, setSetupTxn] = useState<SetupState>();
   const rpcUrl = props.rpcHost;
   const wallet = useWallet();
-
+  const myAnchor = useAnchorWallet()
+  var [isTbfPresale,setTbfPresale] = useState(false)
+  var [isPublic,setIsPublic] = useState(true)
+  
   const anchorWallet = useMemo(() => {
     if (
       !wallet ||
-      !wallet.publicKey ||
+      !wallet.publicKey 
+      ||
       !wallet.signAllTransactions ||
       !wallet.signTransaction
     ) {
@@ -78,11 +91,27 @@ const Home = (props: HomeProps) => {
     } as anchor.Wallet;
   }, [wallet]);
 
+  const firebaseConfig = {
+    apiKey: "AIzaSyCriSTd7iLTestveOrqt2pKGnV2ewPdwcM",
+    authDomain: "the-big-five-1333.firebaseapp.com",
+    projectId: "the-big-five-1333",
+    storageBucket: "the-big-five-1333.appspot.com",
+    messagingSenderId: "541923477789",
+    appId: "1:541923477789:web:8e719bb9098c0bfb3a39f4",
+    measurementId: "G-R574Y9SV7T"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+ 
+  
+ 
   const refreshCandyMachineState = useCallback(async () => {
+    
     if (!anchorWallet) {
       return;
     }
-
+    console.log("refreshing")
     if (props.candyMachineId) {
       try {
         const cndy = await getCandyMachineState(
@@ -148,29 +177,70 @@ const Home = (props: HomeProps) => {
             active = false;
           }
         }
+
+        setTotalItemsRemaining(1500-cndy.state.itemsRedeemed);
+        console.log(cndy)
+        let mintLimit = 1500
+        // await getPresaleDetail()
+   
         // amount to stop the mint?
         if (cndy?.state.endSettings?.endSettingType.amount) {
-          let limit = Math.min(
+          var  limit = Math.min(
             cndy.state.endSettings.number.toNumber(),
             cndy.state.itemsAvailable,
           );
+          limit = Math.min(
+            limit,
+            mintLimit
+          )
+          if (cndy.state.itemsRedeemed < limit) { 
+            setItemsRemaining(limit - cndy.state.itemsRedeemed);
+          } else {
+            setItemsRemaining(0);
+            cndy.state.isSoldOut = true;
+          }
+        } else if (mintLimit != 1333) {
+          let limit = Math.min(
+            mintLimit,
+            cndy.state.itemsAvailable,
+          );
+          
           if (cndy.state.itemsRedeemed < limit) {
             setItemsRemaining(limit - cndy.state.itemsRedeemed);
           } else {
             setItemsRemaining(0);
             cndy.state.isSoldOut = true;
           }
-        } else {
+        }
+        else {
           setItemsRemaining(cndy.state.itemsRemaining);
         }
 
         if (cndy.state.isSoldOut) {
           active = false;
         }
-
-        setIsActive((cndy.state.isActive = active));
-        setIsPresale((cndy.state.isPresale = presale));
+       
+        const [collectionPDA] = await getCollectionPDA(props.candyMachineId);
+        const collectionPDAAccount =
+          await cndy.program.provider.connection.getAccountInfo(collectionPDA);
+          
+        cndy.state.isActive = active
+        cndy.state.isPresale = presale
+        console.log(cndy.state.isActive)
+        setIsActive(active);
+        setIsPresale(presale);
         setCandyMachine(cndy);
+        
+        const txnEstimate =
+          892 +
+          (!!collectionPDAAccount && cndy.state.retainAuthority ? 182 : 0) +
+          (cndy.state.tokenMint ? 177 : 0) +
+          (cndy.state.whitelistMintSettings ? 33 : 0) +
+          (cndy.state.whitelistMintSettings?.mode?.burnEveryTime ? 145 : 0) +
+          (cndy.state.gatekeeper ? 33 : 0) +
+          (cndy.state.gatekeeper?.expireOnUse ? 66 : 0);
+
+        setNeedTxnSplit(txnEstimate > 1230);
       } catch (e) {
         console.log('There was a problem fetching Candy Machine state');
         console.log(e);
@@ -186,13 +256,58 @@ const Home = (props: HomeProps) => {
       setIsUserMinting(true);
       document.getElementById('#identity')?.click();
       if (wallet.connected && candyMachine?.program && wallet.publicKey) {
+        let setupMint: SetupState | undefined;
+        if (needTxnSplit && setupTxn === undefined) {
+          setAlertState({
+            open: true,
+            message: 'Please sign account setup transaction',
+            severity: 'info',
+          });
+          setupMint = await createAccountsForMint(
+            candyMachine,
+            wallet.publicKey,
+          );
+          let status: any = { err: true };
+          if (setupMint.transaction) {
+            status = await awaitTransactionSignatureConfirmation(
+              setupMint.transaction,
+              props.txTimeout,
+              props.connection,
+              true,
+            );
+          }
+          if (status && !status.err) {
+            setSetupTxn(setupMint);
+            setAlertState({
+              open: true,
+              message:
+                'Setup transaction succeeded! Please sign minting transaction',
+              severity: 'info',
+            });
+          } else {
+            setAlertState({
+              open: true,
+              message: 'Mint failed! Please try again!',
+              severity: 'error',
+            });
+            setIsUserMinting(false);
+            return;
+          }
+        } else {
+          setAlertState({
+            open: true,
+            message: 'Please sign minting transaction',
+            severity: 'info',
+          });
+        }
+
         let mintOne = await mintOneToken(
           candyMachine,
           wallet.publicKey,
           beforeTransactions,
           afterTransactions,
+          setupMint ?? setupTxn,
         );
-
         const mintTxId = mintOne[0];
 
         let status: any = { err: true };
@@ -212,6 +327,7 @@ const Home = (props: HomeProps) => {
           setItemsRemaining(remaining);
           setIsActive((candyMachine.state.isActive = remaining > 0));
           candyMachine.state.isSoldOut = remaining === 0;
+          setSetupTxn(undefined);
           setAlertState({
             open: true,
             message: 'Congratulations! Mint succeeded!',
@@ -229,10 +345,10 @@ const Home = (props: HomeProps) => {
       let message = error.msg || 'Minting failed! Please try again!';
       if (!error.msg) {
         if (!error.message) {
-          message = 'Transaction Timeout! Please try again.';
+          message = 'Transaction timeout! Please try again.';
         } else if (error.message.indexOf('0x137')) {
           console.log(error);
-          message = `SOLD OUT!`;
+          message = `User rejected transaction`;
         } else if (error.message.indexOf('0x135')) {
           message = `Insufficient funds to mint. Please fund your wallet.`;
         }
@@ -251,7 +367,7 @@ const Home = (props: HomeProps) => {
         message,
         severity: 'error',
       });
-      // updates the candy machine state to reflect the lastest
+      // updates the candy machine state to reflect the latest
       // information on chain
       refreshCandyMachineState();
     } finally {
@@ -259,11 +375,12 @@ const Home = (props: HomeProps) => {
     }
   };
 
+
   const toggleMintButton = () => {
-    let active = !isActive || isPresale;
+    let active = !isActive || isPresale ;
 
     if (active) {
-      if (candyMachine!.state.isWhitelistOnly && !isWhitelistUser) {
+      if (candyMachine!.state.isWhitelistOnly && !isWhitelistUser) { 
         active = false;
       }
       if (endDate && Date.now() >= endDate.getTime()) {
@@ -281,6 +398,16 @@ const Home = (props: HomeProps) => {
 
     setIsActive((candyMachine!.state.isActive = active));
   };
+  function delay(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+  // const loopUpdate = async () => {
+  //   refreshCandyMachineState()
+  //   console.log("done")
+  //   await delay(10000)
+  //    loopUpdate()
+  // }
+
 
   useEffect(() => {
     refreshCandyMachineState();
@@ -291,19 +418,34 @@ const Home = (props: HomeProps) => {
     refreshCandyMachineState,
   ]);
 
+
   return (
-    <Container style={{ marginTop: 100 }}>
-      <Container maxWidth="xs" style={{ position: 'relative' }}>
-        <Paper
+
+    <Container className='bigBox' style={{ marginTop: 100 }}>
+      <Container maxWidth="xs" style={{ position: 'relative', maxWidth: 600 }}>
+        <Paper className='box'
           style={{
             padding: 24,
             paddingBottom: 10,
-            backgroundColor: '#151A1F',
-            borderRadius: 6,
+            backgroundColor: '#000000b3',
+            borderRadius: 6
           }}
         >
+          <h2 style={{ color: "#ffdc9e" }} className="t1 display- fw-bold text-center">{  "Raffle #1"}</h2> <br />
+          
+  
+          <div className="d-flex mx-3 justify-content-evenly">
+            <p className="ms-4 px-4  fw-bold py-2 walletAdd" style={{ marginLeft: 'auto', marginRight: 'auto', backgroundColor: "#ffac00", color: "#663d1d", borderRadius: 4 }}>
+              Wallet Address :
+            </p>
+            <p className="px-4 py-2 fw-bold wallet" style={{ marginLeft: 'auto', marginRight: 'auto', backgroundColor: "#ffac00", color: "#663d1d", borderRadius: 4 }}>
+              <img className="img-fluid me-3" style={{ width: "1.5rem" }} src={walletLogo} alt="" />
+              {wallet.publicKey ? wallet.publicKey.toString() : '......'}
+            </p>
+
+          </div>
           {!wallet.connected ? (
-            <ConnectButton>Connect Wallet</ConnectButton>
+            <ConnectButton className='connect'>Connect Wallet</ConnectButton>
           ) : (
             <>
               {candyMachine && (
@@ -314,40 +456,49 @@ const Home = (props: HomeProps) => {
                   wrap="nowrap"
                 >
                   <Grid item xs={3}>
-                    <Typography variant="body2" color="textSecondary">
-                      Remaining
-                    </Typography>
+
                     <Typography
                       variant="h6"
                       color="textPrimary"
+                      className='para'
                       style={{
                         fontWeight: 'bold',
                       }}
                     >
-                      {`${itemsRemaining}`}
+                      {`${totalItemsRemaining}`}
+                    </Typography>
+                    <Typography className='subTitle' variant="body2" color="textSecondary">
+                      Remaining
                     </Typography>
                   </Grid>
                   <Grid item xs={4}>
-                    <Typography variant="body2" color="textSecondary">
+
+                    <Typography
+                      variant="h6"
+                      color="textPrimary"
+                      className='para'
+                      style={{ fontWeight: 'bold' }}
+                    >
+                      { "10 TBF" }
+                      {/* <img src="./images/coin.png" alt="TBF" style={ 
+                        {
+                          width:"22px",
+                          position:"relative",
+                          bottom:"2px"
+
+                        }
+                      }/> */}
+                    </Typography>
+                    <Typography className='subTitle  dis' variant="body2" color="textSecondary">
                       {isWhitelistUser && discountPrice
                         ? 'Discount Price'
                         : 'Price'}
                     </Typography>
-                    <Typography
-                      variant="h6"
-                      color="textPrimary"
-                      style={{ fontWeight: 'bold' }}
-                    >
-                      {isWhitelistUser && discountPrice
-                        ? `◎ ${formatNumber.asNumber(discountPrice)}`
-                        : `◎ ${formatNumber.asNumber(
-                            candyMachine.state.price,
-                          )}`}
-                    </Typography>
                   </Grid>
-                  <Grid item xs={5}>
-                    {isActive && endDate && Date.now() < endDate.getTime() ? (
+                  <Grid item xs={5} className='liveBox'>
+                    { isTbfPresale && !isActive && endDate && Date.now() < endDate.getTime() ? (
                       <>
+
                         <MintCountdown
                           key="endSettings"
                           date={getCountdownDate(candyMachine)}
@@ -356,12 +507,13 @@ const Home = (props: HomeProps) => {
                           onComplete={toggleMintButton}
                         />
                         <Typography
+                          className='endText'
                           variant="caption"
                           align="center"
                           display="block"
                           style={{ fontWeight: 'bold' }}
                         >
-                          TO END OF MINT
+                          UNTIL WL
                         </Typography>
                       </>
                     ) : (
@@ -369,30 +521,38 @@ const Home = (props: HomeProps) => {
                         <MintCountdown
                           key="goLive"
                           date={getCountdownDate(candyMachine)}
-                          style={{ justifyContent: 'flex-end' }}
+                          style={{ justifyContent: 'center' }}
                           status={
                             candyMachine?.state?.isSoldOut ||
-                            (endDate && Date.now() > endDate.getTime())
+                              (endDate && Date.now() > endDate.getTime())
                               ? 'COMPLETED'
                               : isPresale
-                              ? 'PRESALE'
-                              : 'LIVE'
+                                ? 'LIVE'
+                                : 'LIVE'
                           }
                           onComplete={toggleMintButton}
                         />
-                        {isPresale &&
+                        { !isTbfPresale && !isPublic &&
                           candyMachine.state.goLiveDate &&
                           candyMachine.state.goLiveDate.toNumber() >
-                            new Date().getTime() / 1000 && (
+                          new Date().getTime() / 1000 ?(
                             <Typography
                               variant="caption"
                               align="center"
                               display="block"
-                              style={{ fontWeight: 'bold' }}
+                              style={{ fontWeight: 'bold', marginTop:12 }}
                             >
-                              UNTIL PUBLIC MINT
+                              UNTIL PUBLIC Raffle
                             </Typography>
-                          )}
+                          ) :
+                          <Typography
+                              variant="caption"
+                              align="center"
+                              display="block"
+                              style={{ fontWeight: 'bold', marginTop:12  }}
+                            >
+                              
+                            </Typography>}
                       </>
                     )}
                   </Grid>
@@ -400,9 +560,9 @@ const Home = (props: HomeProps) => {
               )}
               <MintContainer>
                 {candyMachine?.state.isActive &&
-                candyMachine?.state.gatekeeper &&
-                wallet.publicKey &&
-                wallet.signTransaction ? (
+                  candyMachine?.state.gatekeeper &&
+                  wallet.publicKey &&
+                  wallet.signTransaction ? (
                   <GatewayProvider
                     wallet={{
                       publicKey:
@@ -458,7 +618,7 @@ const Home = (props: HomeProps) => {
                         );
                         setAlertState({
                           open: true,
-                          message: 'Please sign minting',
+                          message: 'Please sign ticket',
                           severity: 'info',
                         });
                       } catch (e) {
@@ -483,8 +643,9 @@ const Home = (props: HomeProps) => {
                       isMinting={isUserMinting}
                       setIsMinting={val => setIsUserMinting(val)}
                       onMint={onMint}
-                      isActive={isActive || (isPresale && isWhitelistUser)}
+                      isActive={ (isActive && itemsRemaining! > 0 ) || (isPresale && isWhitelistUser && itemsRemaining! > 0)}
                       rpcUrl={rpcUrl}
+                      isTbfPresale={isTbfPresale}
                     />
                   </GatewayProvider>
                 ) : (
@@ -493,8 +654,9 @@ const Home = (props: HomeProps) => {
                     isMinting={isUserMinting}
                     setIsMinting={val => setIsUserMinting(val)}
                     onMint={onMint}
-                    isActive={isActive || (isPresale && isWhitelistUser)}
+                    isActive={ ( isActive && itemsRemaining! > 0) || (isPresale && isWhitelistUser && itemsRemaining! > 0 )}
                     rpcUrl={rpcUrl}
+                    isTbfPresale={isTbfPresale}
                   />
                 )}
               </MintContainer>
@@ -506,7 +668,7 @@ const Home = (props: HomeProps) => {
             display="block"
             style={{ marginTop: 7, color: 'grey' }}
           >
-           
+
           </Typography>
         </Paper>
       </Container>
@@ -525,6 +687,7 @@ const Home = (props: HomeProps) => {
       </Snackbar>
     </Container>
   );
+
 };
 
 const getCountdownDate = (
@@ -541,9 +704,9 @@ const getCountdownDate = (
     candyMachine.state.goLiveDate
       ? candyMachine.state.goLiveDate
       : candyMachine.state.isPresale
-      ? new anchor.BN(new Date().getTime() / 1000)
-      : undefined,
+        ? new anchor.BN(new Date().getTime() / 1000)
+        : undefined,
   );
 };
 
-export default Home;
+export default Home; 
